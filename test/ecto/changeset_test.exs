@@ -28,6 +28,10 @@ defmodule Ecto.ChangesetTest do
     def changeset(schema \\ %SocialSource{}, params) do
       cast(schema, params, ~w(origin url)a)
     end
+
+    def changeset(schema, params, context) do
+      cast(schema, params, context)
+    end
   end
 
   defmodule Category do
@@ -299,6 +303,58 @@ defmodule Ecto.ChangesetTest do
       data
       |> cast(params, ~w(title)a)
       |> cast_embed(:source, required: true)
+
+    assert changeset.params == params
+    assert changeset.data == %{title: "hello"}
+    assert %{title: "world", source: %Ecto.Changeset{}} = changeset.changes
+    assert changeset.errors == []
+    assert changeset.valid?
+
+    assert apply_changes(changeset) ==
+             %{
+               title: "world",
+               source: %Ecto.ChangesetTest.SocialSource{
+                 origin: "facebook",
+                 url: "http://example.com/social"
+               }
+             }
+  end
+
+  test "cast/4: with dynamic embed and context" do
+    data = {
+      %{
+        title: "hello"
+      },
+      %{
+        title: :string,
+        source: {
+          :embed,
+          %Ecto.Embedded{
+            cardinality: :one,
+            field: :source,
+            on_cast: &SocialSource.changeset(&1, &2),
+            on_replace: :raise,
+            owner: nil,
+            related: SocialSource,
+            unique: true
+          }
+        }
+      }
+    }
+
+    params = %{
+      "title" => "world",
+      "source" => %{"origin" => "facebook", "url" => "http://example.com/social"}
+    }
+
+    changeset =
+      data
+      |> cast(params, ~w(title)a)
+      |> cast_embed(:source,
+        required: true,
+        context: ~w(origin url)a,
+        with: &SocialSource.changeset/3
+      )
 
     assert changeset.params == params
     assert changeset.data == %{title: "hello"}

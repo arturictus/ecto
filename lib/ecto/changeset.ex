@@ -1252,6 +1252,10 @@ defmodule Ecto.Changeset do
       entries. Non-listed indexes will come before any sorted ones. See
       `cast_assoc/3` for more information
 
+    * `:context` - context to be passed to the `:with` function that accepts 3 arguments.
+      If this option is given, the `:with` function must accept 3 arguments,
+      the struct, the parameters, and the context.
+
   """
   @spec cast_embed(t, atom, Keyword.t()) :: t
   def cast_embed(changeset, name, opts \\ []) when is_atom(name) do
@@ -1277,6 +1281,8 @@ defmodule Ecto.Changeset do
       else
         {changeset, false}
       end
+
+    opts = maybe_update_with_func_with_context(opts)
 
     on_cast = Keyword.get_lazy(opts, :with, fn -> on_cast_default(type, related) end)
     sort = opts_key_from_params(:sort_param, opts, params)
@@ -1313,6 +1319,29 @@ defmodule Ecto.Changeset do
       {type, %{relation | on_cast: on_cast}}
     end)
   end
+
+  defp maybe_update_with_func_with_context(opts) do
+    if Keyword.has_key?(opts, :context) do
+      case opts[:with] do
+        fun when is_function(fun, 3) ->
+          Keyword.put(opts, :with, fn struct, params ->
+            opts[:with].(struct, params, opts[:context])
+          end)
+
+        fun when is_function(fun, 4) ->
+          Keyword.put(opts, :with, fn struct, params, idx ->
+            opts[:with].(struct, params, idx, opts[:context])
+          end)
+
+        _ ->
+          raise ArgumentError, "missing :with option when :context is given"
+      end
+    else
+      opts
+    end
+  end
+
+  defp maybe_update_with_func_with_context(opts), do: opts
 
   defp cast_params(%{cardinality: :many} = relation, nil, sort, drop)
        when is_list(sort) or is_list(drop) do
